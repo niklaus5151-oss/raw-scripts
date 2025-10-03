@@ -1,0 +1,203 @@
+-- LocalScript: Mobil Araba Buton Kontrol (drift uyumlu, toggle draggable)
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local gui = player:WaitForChild("PlayerGui")
+
+-- Temizle
+local existing = gui:FindFirstChild("MobileDriveGui")
+if existing then existing:Destroy() end
+
+-- Başlangıç toggle pozisyonu
+local TOGGLE_START_POS = UDim2.new(1,-40,0,40)
+
+-- GUI oluştur
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "MobileDriveGui"
+screenGui.Parent = gui
+screenGui.ResetOnSpawn = false
+
+-- İsim label (orta üst)
+local nameLabel = Instance.new("TextLabel")
+nameLabel.Name = "PlayerNameLabel"
+nameLabel.Size = UDim2.new(0,200,0,40)
+nameLabel.Position = UDim2.new(0.5,0,0,10) -- orta üst
+nameLabel.AnchorPoint = Vector2.new(0.5,0)
+nameLabel.BackgroundTransparency = 1
+nameLabel.TextScaled = true
+nameLabel.Font = Enum.Font.SourceSansBold
+nameLabel.TextColor3 = Color3.fromRGB(255,255,255)
+nameLabel.Text = "YasuKe Gui"
+nameLabel.ZIndex = 10
+nameLabel.Parent = screenGui
+
+-- Buton üretici
+local function makeButton(name, size, pos, text)
+    local btn = Instance.new("ImageButton")
+    btn.Name = name
+    btn.Size = size
+    btn.Position = pos
+    btn.AnchorPoint = Vector2.new(0.5,0.5)
+    btn.BackgroundTransparency = 0
+    btn.BackgroundColor3 = Color3.fromRGB(30,30,30)
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = true
+    btn.ZIndex = 5
+    btn.Parent = screenGui
+    btn.ClipsDescendants = true
+    btn.Image = ""
+    btn.ImageTransparency = 1
+    btn.Style = Enum.ButtonStyle.RobloxRoundButton
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.fromScale(1,1)
+    label.Position = UDim2.fromScale(0,0)
+    label.BackgroundTransparency = 1
+    label.Text = text or ""
+    label.TextScaled = true
+    label.Font = Enum.Font.SourceSansBold
+    label.TextColor3 = Color3.fromRGB(255,255,255)
+    label.ZIndex = 6
+    label.Parent = btn
+
+    return btn
+end
+
+-- Buton boyutları
+local BTN_SMALL = UDim2.new(0,80,0,80)
+local BTN_MED   = UDim2.new(0,90,0,90)
+local BTN_TINY  = UDim2.new(0,60,0,60)
+
+-- Butonlar
+local leftBtn    = makeButton("LeftBtn", BTN_SMALL, UDim2.new(0,90,1,-130), "←")
+local rightBtn   = makeButton("RightBtn", BTN_SMALL, UDim2.new(0,180,1,-130), "→")
+local backBtn    = makeButton("BackBtn", BTN_MED, UDim2.new(1,-180,1,-130), "GERİ")
+local forwardBtn = makeButton("ForwardBtn", BTN_MED, UDim2.new(1,-80,1,-130), "GAZ")
+
+-- El freni (geri tuşunun altına, hafif sola kaydırılmış)
+local backPos = backBtn.Position
+local handbrakeBtn = makeButton("HandbrakeBtn", BTN_TINY, UDim2.new(backPos.X.Scale, backPos.X.Offset-20, backPos.Y.Scale, backPos.Y.Offset+80), "⛔")
+handbrakeBtn.Image = "rbxassetid://8600398331"
+handbrakeBtn.ImageTransparency = 0
+
+-- İkonlar
+forwardBtn.Image = "rbxassetid://13796487357"
+forwardBtn.ImageTransparency = 0
+backBtn.Image    = "rbxassetid://13796487421"
+backBtn.ImageTransparency = 0
+
+-- Toggle buton (draggable)
+local toggle = makeButton("ToggleBtn", UDim2.new(0,50,0,50), TOGGLE_START_POS, "✖")
+toggle.ZIndex = 20
+toggle.Active = true
+
+local visible = true
+local allButtons = {leftBtn, rightBtn, forwardBtn, backBtn, handbrakeBtn}
+
+toggle.MouseButton1Click:Connect(function()
+    visible = not visible
+    for _, b in ipairs(allButtons) do
+        b.Visible = visible
+    end
+    toggle.Text = visible and "✖" or "✔"
+end)
+
+-- Toggle sürükleme (X ve Y ekseni)
+do
+    local dragging = false
+    local dragStartPos
+    local startGuiPos
+
+    toggle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStartPos = input.Position
+            startGuiPos = toggle.Position
+
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+
+    toggle.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStartPos
+            local newX = startGuiPos.X.Offset + delta.X
+            local newY = startGuiPos.Y.Offset + delta.Y
+            local screenW = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize.X or 1280
+            local screenH = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize.Y or 720
+            newX = math.clamp(newX,0,screenW)
+            newY = math.clamp(newY,0,screenH)
+            toggle.Position = UDim2.new(0, newX, 0, newY)
+        end
+    end)
+end
+
+-- Basılı tutma
+local pressing = {left=false, right=false, forward=false, back=false, handbrake=false}
+local function bindPress(btn,key)
+    btn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            pressing[key] = true
+        end
+    end)
+    btn.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            pressing[key] = false
+        end
+    end)
+end
+
+bindPress(leftBtn,"left")
+bindPress(rightBtn,"right")
+bindPress(forwardBtn,"forward")
+bindPress(backBtn,"back")
+bindPress(handbrakeBtn,"handbrake")
+
+-- VehicleSeat bulma
+local function getSeat()
+    local char = player.Character
+    if char and char:FindFirstChildOfClass("Humanoid") then
+        local seat = char:FindFirstChildOfClass("Humanoid").SeatPart
+        if seat and seat:IsA("VehicleSeat") then return seat end
+    end
+    if char and char.PrimaryPart then
+        local nearest, dist = nil, math.huge
+        for _, v in pairs(workspace:GetDescendants()) do
+            if v:IsA("VehicleSeat") then
+                local d = (v.Position - char.PrimaryPart.Position).Magnitude
+                if d < dist and d < 25 then
+                    dist = d
+                    nearest = v
+                end
+            end
+        end
+        return nearest
+    end
+    return nil
+end
+
+-- Her frame işle (drift uyumlu)
+RunService.RenderStepped:Connect(function()
+    local throttle, steer = 0,0
+    if pressing.forward then throttle = 1 end
+    if pressing.back then throttle = -1 end
+    if pressing.left then steer = -1 end
+    if pressing.right then steer = 1 end
+
+    local seat = getSeat()
+    if seat and seat.Parent then
+        -- Drift uyumlu: direksiyon el freniyle kilitlenmez
+        seat.Throttle = throttle
+        seat.Steer = steer
+
+        local hb = seat:FindFirstChild("HandBrake")
+        if hb and hb:IsA("BoolValue") then
+            hb.Value = pressing.handbrake
+        end
+    end
+end)
